@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SelectPro — 亚马逊智能选品</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        display: ['Outfit', 'sans-serif'],
+        body: ['Noto Sans SC', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      colors: {
+        surface: { 50: '#f0f1ff', 100: '#e0e2ff', 200: '#c3c5fe', 800: '#12132a', 900: '#0b0c1e', 950: '#060714' },
+        accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5', glow: 'rgba(99,102,241,0.25)' },
+        cyan: { DEFAULT: '#22d3ee', dark: '#06b6d4' },
+        emerald: { DEFAULT: '#34d399' },
+        rose: { DEFAULT: '#fb7185' },
+      }
+    }
+  }
+}
+</script>
+<style>
+  :root { --accent: #6366f1; --accent-l: #818cf8; --cyan: #22d3ee; --surface: #0b0c1e; --surface-2: #12132a; }
+  * { scrollbar-width: thin; scrollbar-color: #2a2b4a transparent; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2b4a; border-radius: 3px; }
+  body { background: var(--surface); overflow-x: hidden; }
+  body::before { content:''; position:fixed; top:-50%; left:-50%; width:200%; height:200%;
+    background: radial-gradient(ellipse at 20% 20%, rgba(99,102,241,0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(34,211,153,0.04) 0%, transparent 50%);
+    pointer-events:none; z-index:0; }
+  #app { position:relative; z-index:1; }
+
+  /* Header glow line */
+  .header-glow { position:relative; }
+  .header-glow::after { content:''; position:absolute; bottom:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--cyan), transparent); }
+
+  /* Tab styles */
+  .tab-btn { position:relative; transition: all .25s ease; }
+  .tab-btn.active { color: #fff; }
+  .tab-btn.active::after { content:''; position:absolute; bottom:-1px; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, var(--accent), var(--cyan)); border-radius:2px; }
+  .tab-btn:not(.active):hover { color: #a5b4fc; }
+
+  /* Cards */
+  .card { background: rgba(18,19,42,0.8); border:1px solid rgba(99,102,241,0.1); border-radius:12px;
+    backdrop-filter: blur(12px); transition: border-color .2s, box-shadow .2s; }
+  .card:hover { border-color: rgba(99,102,241,0.25); box-shadow: 0 0 30px rgba(99,102,241,0.05); }
+
+  /* Stat card shimmer */
+  .stat-card { position:relative; overflow:hidden; }
+  .stat-card::before { content:''; position:absolute; top:0; left:-100%; width:50%; height:100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.02), transparent);
+    animation: shimmer 5s infinite; }
+  @keyframes shimmer { 0%{left:-100%} 50%{left:100%} 100%{left:100%} }
+
+  /* Table */
+  .data-table { border-collapse: separate; border-spacing: 0; }
+  .data-table thead th { position:sticky; top:0; z-index:5; background: #0d0e24;
+    font-family: 'Outfit',sans-serif; font-weight:500; font-size:0.75rem; letter-spacing:0.05em;
+    text-transform:uppercase; color:#818cf8; padding:12px 16px; text-align:left;
+    border-bottom: 1px solid rgba(99,102,241,0.15); cursor:pointer; user-select:none; white-space:nowrap; }
+  .data-table thead th:hover { color: #c7d2fe; }
+  .data-table thead th .sort-icon { display:inline-block; margin-left:4px; opacity:0.4; transition:opacity .2s; }
+  .data-table thead th.sorted .sort-icon { opacity:1; color:#22d3ee; }
+  .data-table tbody tr { transition: background .15s; cursor:pointer; }
+  .data-table tbody tr:hover { background: rgba(99,102,241,0.06); }
+  .data-table tbody td { padding:10px 16px; border-bottom:1px solid rgba(255,255,255,0.03);
+    font-size:0.875rem; vertical-align:middle; }
+  .data-table tbody td.num { font-family:'JetBrains Mono',monospace; font-size:0.8rem; }
+
+  /* Inputs */
+  .input-field { background: rgba(18,19,42,0.9); border:1px solid rgba(99,102,241,0.15);
+    border-radius:8px; padding:10px 14px; color:#e0e2ff; font-size:0.9rem; outline:none;
+    transition: border-color .2s, box-shadow .2s; font-family:'Noto Sans SC',sans-serif; }
+  .input-field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+  .input-field::placeholder { color: #4a4b6a; }
+
+  .btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; border:none;
+    border-radius:8px; padding:10px 20px; font-weight:600; font-size:0.9rem; cursor:pointer;
+    transition: transform .15s, box-shadow .15s; font-family:'Outfit',sans-serif; }
+  .btn-primary:hover { transform:translateY(-1px); box-shadow: 0 4px 20px rgba(99,102,241,0.3); }
+  .btn-primary:active { transform:translateY(0); }
+  .btn-primary:disabled { opacity:0.5; cursor:not-allowed; transform:none; box-shadow:none; }
+
+  .btn-ghost { background:transparent; border:1px solid rgba(99,102,241,0.2); color:#a5b4fc;
+    border-radius:8px; padding:8px 16px; font-size:0.825rem; cursor:pointer;
+    transition: all .2s; font-family:'Outfit',sans-serif; }
+  .btn-ghost:hover { border-color:rgba(99,102,241,0.5); background:rgba(99,102,241,0.06); color:#c7d2fe; }
+
+  /* Slide panel */
+  .slide-panel { position:fixed; top:0; right:0; width:480px; max-width:95vw; height:100vh;
+    background: #0d0e24; border-left:1px solid rgba(99,102,241,0.15);
+    transform:translateX(100%); transition:transform .35s cubic-bezier(.4,0,.2,1);
+    z-index:100; overflow-y:auto; padding:24px; }
+  .slide-panel.open { transform:translateX(0); }
+  .slide-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99;
+    opacity:0; pointer-events:none; transition:opacity .3s; }
+  .slide-overlay.open { opacity:1; pointer-events:auto; }
+
+  /* Modal */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .25s; }
+  .modal-overlay.open { opacity:1; pointer-events:auto; }
+  .modal-box { background:#12132a; border:1px solid rgba(99,102,241,0.2); border-radius:16px;
+    padding:32px; width:480px; max-width:90vw; transform:scale(0.95); transition:transform .25s; }
+  .modal-overlay.open .modal-box { transform:scale(1); }
+
+  /* Loading skeleton */
+  .skeleton { background: linear-gradient(90deg, rgba(99,102,241,0.06) 25%, rgba(99,102,241,0.12) 50%, rgba(99,102,241,0.06) 75%);
+    background-size: 200% 100%; animation: skeleton-pulse 1.5s infinite; border-radius:6px; }
+  @keyframes skeleton-pulse { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* Spinner */
+  .spinner { display:inline-block; width:20px; height:20px; border:2px solid rgba(99,102,241,0.2);
+    border-top-color:#818cf8; border-radius:50%; animation:spin .6s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* Badge */
+  .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px;
+    font-size:0.7rem; font-weight:600; font-family:'JetBrains Mono',monospace; }
+  .badge-green { background:rgba(52,211,153,0.1); color:#34d399; border:1px solid rgba(52,211,153,0.2); }
+  .badge-amber { background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.2); }
+  .badge-red { background:rgba(251,113,133,0.1); color:#fb7185; border:1px solid rgba(251,113,133,0.2); }
+  .badge-blue { background:rgba(99,102,241,0.1); color:#818cf8; border:1px solid rgba(99,102,241,0.2); }
+
+  /* ASIN tag */
+  .asin-tag { display:inline-flex; align-items:center; gap:6px; background:rgba(18,19,42,0.9);
+    border:1px solid rgba(99,102,241,0.15); border-radius:8px; padding:6px 10px 6px 12px;
+    font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:#a5b4fc; }
+  .asin-tag .remove { cursor:pointer; color:#4a4b6a; transition:color .15s; font-size:1rem; line-height:1; }
+  .asin-tag .remove:hover { color:#fb7185; }
+
+  /* Fade in */
+  .fade-in { animation: fadeIn .4s ease both; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  /* Responsive */
+  @media(max-width:768px) {
+    .slide-panel { width:100vw; }
+    .data-table { font-size:0.8rem; }
+  }
+</style>
+</head>
+<body class="bg-surface-950 text-gray-200 font-body min-h-screen">
+<!-- APP SHELL -->
+<div id="app">
+  <!-- HEADER -->
+  <header id="header" class="header-glow sticky top-0 z-50 backdrop-blur-xl bg-surface-950/80">
+    <div class="max-w-[1440px] mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-cyan flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h1 class="font-display font-700 text-lg tracking-tight text-white">Select<span class="text-accent-light">Pro</span></h1>
+        <span class="hidden sm:inline text-xs text-gray-500 font-mono ml-2 mt-0.5">亚马逊智能选品</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="api-status" class="hidden sm:flex items-center gap-1.5 text-xs text-gray-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-gray-600" id="api-dot"></span>
+          <span id="api-status-text">检测中...</span>
+        </div>
+        <button onclick="openSettings()" class="w-9 h-9 rounded-lg border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-accent/30 transition-all" title="设置">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <nav id="tabs-nav" class="sticky top-16 z-40 backdrop-blur-xl bg-surface-950/60 border-b border-white/[0.03]">
+    <div class="max-w-[1440px] mx-auto px-4 flex gap-1">
+      <button class="tab-btn active px-5 py-3.5 text-sm font-medium text-gray-400 font-display" data-tab="search" onclick="switchTab('search')">
+        <span class="flex items-center gap-2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          关键词搜索
+        </span>
+      </button>
+      <button class="tab-btn px-5 py-3.5 text-sm font-medium text-gray-400 font-display" data-tab="category" onclick="switchTab('category')">
+        <span class="flex items-center gap-2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          品类分析
+        </span>
+      </button>
+      <button class="tab-btn px-5 py-3.5 text-sm font-medium text-gray-400 font-display" data-tab="compare" onclick="switchTab('compare')">
+        <span class="flex items-center gap-2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          竞品对比
+        </span>
+      </button>
+    </div>
+  </nav>
+  <!-- MAIN CONTENT -->
+  <main id="main-content" class="max-w-[1440px] mx-auto px-4 pb-20"></main>
+  <!-- SETTINGS MODAL -->
+  <div id="settings-overlay" class="modal-overlay" onclick="closeSettings(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="font-display font-600 text-lg text-white">爬虫设置</h2>
+        <button onclick="closeSettings()" class="text-gray-500 hover:text-white transition"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1.5 font-mono uppercase tracking-wider">后端地址</label>
+          <input type="text" id="backend-url-input" class="input-field w-full" placeholder="留空则使用当前页面地址（默认）">
+        </div>
+        <div class="flex items-start gap-2 p-3 rounded-lg bg-accent/5 border border-accent/10">
+          <svg class="mt-0.5 shrink-0 text-accent-light" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div class="text-xs text-gray-400 leading-relaxed">
+            本工具使用自建爬虫抓取亚马逊数据，<span class="text-cyan font-500">无需 API Key，完全免费</span>。
+            <br>前后端已合并部署，默认使用当前页面地址。
+            <br>如需分离部署，可填写后端地址。
+          </div>
+        </div>
+        <div id="settings-status" class="text-xs"></div>
+        <button onclick="saveSettings()" class="btn-primary w-full mt-2">保存并测试连接</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL SLIDE PANEL -->
+  <div id="slide-overlay" class="slide-overlay" onclick="closeDetailPanel()"></div>
+  <div id="slide-panel" class="slide-panel">
+    <div class="flex items-center justify-between mb-6">
+      <h3 class="font-display font-600 text-white">商品详情</h3>
+      <button onclick="closeDetailPanel()" class="text-gray-500 hover:text-white transition"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div id="detail-content"></div>
+  </div>
+</div>
+<script>
+// ==================== STATE ====================
+const state = {
+  backendUrl: localStorage.getItem('scraper_backend_url') || '',
+  activeTab: 'search',
+  searchResults: [],
+  searchSort: { col: null, asc: true },
+  categoryList: [],
+  categoryProducts: [],
+  compareAsins: [],
+  compareProducts: [],
+  connected: false,
+};
+
+const COUNTRIES = [
+  { code:'US', flag:'🇺🇸', name:'美国' }, { code:'UK', flag:'🇬🇧', name:'英国' },
+  { code:'DE', flag:'🇩🇪', name:'德国' }, { code:'JP', flag:'🇯🇵', name:'日本' },
+  { code:'CA', flag:'🇨🇦', name:'加拿大' }, { code:'FR', flag:'🇫🇷', name:'法国' },
+  { code:'IT', flag:'🇮🇹', name:'意大利' }, { code:'ES', flag:'🇪🇸', name:'西班牙' },
+];
+
+// ==================== API (Scraper Backend) ====================
+async function apiFetch(endpoint, params = {}) {
+  const base = state.backendUrl || '';
+  const url = new URL(base + '/api' + endpoint, window.location.href);
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') url.searchParams.set(k, v); });
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.error || `请求失败 (${resp.status})`);
+  }
+  const json = await resp.json();
+  if (!state.connected) { state.connected = true; updateApiStatus(true); }
+  return json;
+}
+
+async function checkBackendHealth() {
+  try {
+    const base = state.backendUrl || '';
+    const resp = await fetch(new URL(base + '/api/health', window.location.href).toString(), { signal: AbortSignal.timeout(5000) });
+    if (resp.ok) { state.connected = true; updateApiStatus(true); return true; }
+  } catch {}
+  state.connected = false;
+  updateApiStatus(false);
+  return false;
+}
+
+function updateApiStatus(connected) {
+  const dot = document.getElementById('api-dot');
+  const txt = document.getElementById('api-status-text');
+  if (connected) { dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald'; txt.textContent = '爬虫就绪'; txt.className = 'text-emerald text-xs'; }
+  else { dot.className = 'w-1.5 h-1.5 rounded-full bg-rose'; txt.textContent = '未连接'; txt.className = 'text-rose text-xs'; }
+}
+
+// ==================== SETTINGS ====================
+function openSettings() {
+  document.getElementById('backend-url-input').value = state.backendUrl;
+  document.getElementById('settings-overlay').classList.add('open');
+}
+function closeSettings(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+async function saveSettings() {
+  const url = document.getElementById('backend-url-input').value.trim().replace(/\/+$/, '');
+  state.backendUrl = url || '';
+  localStorage.setItem('scraper_backend_url', state.backendUrl);
+  const statusEl = document.getElementById('settings-status');
+  statusEl.innerHTML = '<span class="spinner" style="width:14px;height:14px"></span> <span class="text-gray-400">正在测试连接...</span>';
+  const ok = await checkBackendHealth();
+  if (ok) {
+    statusEl.innerHTML = '<span class="text-emerald">✓ 连接成功！爬虫服务就绪。</span>';
+    showToast('后端连接成功', 'success');
+    setTimeout(closeSettings, 1000);
+  } else {
+    statusEl.innerHTML = '<span class="text-rose">✗ 无法连接。请确认爬虫服务已启动。</span>';
+    showToast('无法连接后端服务', 'error');
+  }
+}
+
+// ==================== TABS ====================
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  renderMainContent();
+}
+
+// ==================== TOAST ====================
+function showToast(msg, type = 'info') {
+  const t = document.createElement('div');
+  const colors = { info: 'border-accent/30 bg-accent/10 text-accent-light', error: 'border-rose/30 bg-rose/10 text-rose', success: 'border-emerald/30 bg-emerald/10 text-emerald' };
+  t.className = `fixed top-20 right-4 z-[300] px-4 py-3 rounded-lg border text-sm font-medium fade-in ${colors[type] || colors.info}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+// ==================== HELPERS ====================
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function fmtNum(n) { if (n == null) return '-'; return Number(n).toLocaleString(); }
+function parsePrice(p) {
+  if (!p) return 0;
+  if (typeof p === 'number') return p;
+  return parseFloat(String(p).replace(/[^0-9.]/g, '')) || 0;
+}
+function countrySelect(id, cls = '') {
+  return `<select id="${id}" class="input-field ${cls}" style="min-width:120px">
+    ${COUNTRIES.map(c => `<option value="${c.code}">${c.flag} ${c.name}</option>`).join('')}
+  </select>`;
+}
+
+// ==================== RENDER MAIN ====================
+function renderMainContent() {
+  const main = document.getElementById('main-content');
+  switch (state.activeTab) {
+    case 'search': renderSearchTab(main); break;
+    case 'category': renderCategoryTab(main); break;
+    case 'compare': renderCompareTab(main); break;
+  }
+}
+
+// ==================== TAB 1: SEARCH ====================
+function renderSearchTab(main) {
+  main.innerHTML = `
+    <div class="fade-in mt-6">
+      <div class="card p-5 mb-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex-1 min-w-[200px]">
+            <input type="text" id="search-input" class="input-field w-full" placeholder="输入关键词，例如：wireless earbuds" onkeydown="if(event.key==='Enter')doSearch()">
+          </div>
+          ${countrySelect('search-country')}
+          <button onclick="doSearch()" class="btn-primary flex items-center gap-2" id="search-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            搜索
+          </button>
+          <button onclick="exportCSV()" class="btn-ghost flex items-center gap-2" id="export-btn" style="display:none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导出 CSV
+          </button>
+        </div>
+      </div>
+      <div id="search-results"></div>
+    </div>`;
+}
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  const country = document.getElementById('search-country').value;
+  const btn = document.getElementById('search-btn');
+  const container = document.getElementById('search-results');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 抓取中...';
+  container.innerHTML = buildSkeletonTable(6);
+  try {
+    const data = await apiFetch('/search', { query: q, country, page: '1' });
+    const products = data.data?.products || [];
+    state.searchResults = products;
+    state.searchSort = { col: null, asc: true };
+    renderSearchResults(products);
+    document.getElementById('export-btn').style.display = products.length ? '' : 'none';
+  } catch (e) {
+    container.innerHTML = `<div class="card p-8 text-center text-rose">${esc(e.message)}</div>`;
+    showToast(e.message, 'error');
+  }
+  btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> 搜索';
+}
+
+function renderSearchResults(products) {
+  const container = document.getElementById('search-results');
+  if (!products.length) { container.innerHTML = '<div class="card p-8 text-center text-gray-500">未找到相关商品（可能被亚马逊反爬限制，请稍后重试）</div>'; return; }
+  const sortIcon = (col) => {
+    const active = state.searchSort.col === col;
+    const arrow = active ? (state.searchSort.asc ? '↑' : '↓') : '↕';
+    return `<span class="sort-icon">${arrow}</span>`;
+  };
+  container.innerHTML = `
+    <div class="card overflow-hidden">
+      <div class="overflow-x-auto" style="max-height:65vh">
+        <table class="data-table w-full">
+          <thead><tr>
+            <th style="width:60px">图片</th>
+            <th onclick="sortSearch('title')" class="${state.searchSort.col==='title'?'sorted':''}">商品名称${sortIcon('title')}</th>
+            <th onclick="sortSearch('asin')" class="${state.searchSort.col==='asin'?'sorted':''}">ASIN${sortIcon('asin')}</th>
+            <th onclick="sortSearch('price')" class="${state.searchSort.col==='price'?'sorted':''}">价格${sortIcon('price')}</th>
+            <th onclick="sortSearch('rating')" class="${state.searchSort.col==='rating'?'sorted':''}">评分${sortIcon('rating')}</th>
+            <th onclick="sortSearch('reviews')" class="${state.searchSort.col==='reviews'?'sorted':''}">评论数${sortIcon('reviews')}</th>
+            <th onclick="sortSearch('bsr')" class="${state.searchSort.col==='bsr'?'sorted':''}">销量${sortIcon('bsr')}</th>
+          </tr></thead>
+          <tbody>
+            ${products.map((p, i) => {
+              const price = p.product_price || '-';
+              const rating = p.product_star_rating || '-';
+              const reviews = p.product_num_ratings || 0;
+              const bsr = p.sales_volume || '-';
+              const img = p.product_photo || '';
+              const title = p.product_title || '';
+              const asin = p.asin || '';
+              return `<tr onclick="showDetail(${i})" class="fade-in" style="animation-delay:${i*30}ms">
+                <td><img src="${esc(img)}" alt="" class="w-12 h-12 object-contain rounded bg-white/5" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%2312132a%22 width=%2248%22 height=%2248%22/></svg>'"></td>
+                <td><div class="max-w-xs truncate text-gray-300" title="${esc(title)}">${esc(title)}</div></td>
+                <td class="num"><span class="badge badge-blue">${esc(asin)}</span></td>
+                <td class="num text-emerald font-500">${esc(String(price))}</td>
+                <td class="num">${ratingStars(rating)}</td>
+                <td class="num">${fmtNum(reviews)}</td>
+                <td class="num">${esc(String(bsr))}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-3 border-t border-white/[0.03] text-xs text-gray-500 flex justify-between">
+        <span>共 ${products.length} 件商品</span>
+        <span>点击行查看详情</span>
+      </div>
+    </div>`;
+}
+
+function ratingStars(r) {
+  const v = parseFloat(r) || 0;
+  const full = Math.floor(v);
+  const half = v % 1 >= 0.3 ? 1 : 0;
+  let s = '<span class="text-amber-400">';
+  for (let i = 0; i < full; i++) s += '★';
+  if (half) s += '☆';
+  s += '</span>';
+  s += ` <span class="text-gray-500">${v.toFixed(1)}</span>`;
+  return s;
+}
+
+function sortSearch(col) {
+  if (state.searchSort.col === col) state.searchSort.asc = !state.searchSort.asc;
+  else { state.searchSort.col = col; state.searchSort.asc = true; }
+  const sorted = [...state.searchResults].sort((a, b) => {
+    let va, vb;
+    switch (col) {
+      case 'title': va = (a.product_title||'').toLowerCase(); vb = (b.product_title||'').toLowerCase(); break;
+      case 'asin': va = a.asin||''; vb = b.asin||''; break;
+      case 'price': va = parsePrice(a.product_price); vb = parsePrice(b.product_price); break;
+      case 'rating': va = parseFloat(a.product_star_rating||0); vb = parseFloat(b.product_star_rating||0); break;
+      case 'reviews': va = parseInt(a.product_num_ratings||0); vb = parseInt(b.product_num_ratings||0); break;
+      case 'bsr': va = String(a.sales_volume||'zzz'); vb = String(b.sales_volume||'zzz'); break;
+      default: va=0; vb=0;
+    }
+    if (typeof va === 'string') return state.searchSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return state.searchSort.asc ? va - vb : vb - va;
+  });
+  state.searchResults = sorted;
+  renderSearchResults(sorted);
+}
+
+function exportCSV() {
+  if (!state.searchResults.length) return;
+  const headers = ['商品名称','ASIN','价格','评分','评论数','销量'];
+  const rows = state.searchResults.map(p => [
+    `"${(p.product_title||'').replace(/"/g,'""')}"`,
+    p.asin||'',
+    p.product_price||'',
+    p.product_star_rating||'',
+    p.product_num_ratings||'',
+    p.sales_volume||''
+  ]);
+  const csv = '\uFEFF' + [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `amazon_products_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('CSV 已导出', 'success');
+}
+
+// ==================== DETAIL PANEL ====================
+async function showDetail(idx) {
+  const p = state.searchResults[idx];
+  if (!p) return;
+  const panel = document.getElementById('slide-panel');
+  const overlay = document.getElementById('slide-overlay');
+  const content = document.getElementById('detail-content');
+  panel.classList.add('open');
+  overlay.classList.add('open');
+
+  // Show basic info first, then try to fetch details
+  const img = p.product_photo || '';
+  const title = p.product_title || '';
+  const price = p.product_price || '-';
+  const rating = p.product_star_rating || '-';
+  const reviews = p.product_num_ratings || 0;
+  const asin = p.asin || '';
+  const url = p.product_url || '#';
+
+  content.innerHTML = `
+    <div class="space-y-5 fade-in">
+      <img src="${esc(img)}" alt="" class="w-full max-h-64 object-contain rounded-lg bg-white/5">
+      <h4 class="text-white font-500 leading-snug">${esc(title)}</h4>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="card p-3"><div class="text-xs text-gray-500 mb-1">价格</div><div class="text-emerald font-mono font-600 text-lg">${esc(String(price))}</div></div>
+        <div class="card p-3"><div class="text-xs text-gray-500 mb-1">评分</div><div class="text-lg">${ratingStars(rating)}</div></div>
+        <div class="card p-3"><div class="text-xs text-gray-500 mb-1">评论数</div><div class="text-cyan font-mono font-600 text-lg">${fmtNum(reviews)}</div></div>
+        <div class="card p-3"><div class="text-xs text-gray-500 mb-1">ASIN</div><div class="font-mono text-accent-light text-sm">${esc(asin)}</div></div>
+      </div>
+      <div id="detail-extra" class="text-xs text-gray-500"><span class="spinner" style="width:14px;height:14px"></span> 加载详细信息...</div>
+      <a href="${esc(url)}" target="_blank" rel="noopener" class="btn-primary inline-flex items-center gap-2 text-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        在亚马逊查看
+      </a>
+    </div>`;
+
+  // Fetch full details from scraper
+  if (asin) {
+    try {
+      const country = document.getElementById('search-country')?.value || 'US';
+      const detail = await apiFetch('/product-details', { asin, country });
+      const d = detail.data || {};
+      const extraEl = document.getElementById('detail-extra');
+      if (extraEl) {
+        let html = '';
+        if (d.product_byline) html += `<div class="mb-2"><span class="text-gray-500">品牌：</span><span class="text-gray-300">${esc(d.product_byline)}</span></div>`;
+        if (d.product_availability) html += `<div class="mb-2"><span class="text-gray-500">库存：</span><span class="text-gray-300">${esc(d.product_availability)}</span></div>`;
+        if (d.sales_volume) html += `<div class="mb-2"><span class="text-gray-500">BSR：</span><span class="badge badge-amber">${esc(d.sales_volume)}</span></div>`;
+        if (d.product_features && d.product_features.length) {
+          html += '<div class="mt-3 text-sm"><div class="text-gray-500 mb-1">产品特点：</div><ul class="list-disc pl-4 text-gray-400 space-y-1">';
+          d.product_features.forEach(f => { html += `<li>${esc(f)}</li>`; });
+          html += '</ul></div>';
+        }
+        if (d.product_description) html += `<div class="mt-3 text-sm text-gray-400 leading-relaxed">${esc(d.product_description).substring(0,500)}</div>`;
+        extraEl.innerHTML = html || '<span class="text-gray-600">无更多详情</span>';
+      }
+    } catch (e) {
+      const extraEl = document.getElementById('detail-extra');
+      if (extraEl) extraEl.innerHTML = `<span class="text-gray-600">详情加载失败: ${esc(e.message)}</span>`;
+    }
+  }
+}
+
+function closeDetailPanel() {
+  document.getElementById('slide-panel').classList.remove('open');
+  document.getElementById('slide-overlay').classList.remove('open');
+}
+
+// ==================== TAB 2: CATEGORY ====================
+function renderCategoryTab(main) {
+  main.innerHTML = `
+    <div class="fade-in mt-6">
+      <div class="card p-5 mb-6">
+        <div class="flex flex-wrap items-center gap-3">
+          ${countrySelect('cat-country', '', 'onchange="loadCategories()"')}
+          <select id="cat-select" class="input-field flex-1 min-w-[200px]">
+            <option value="">选择品类...</option>
+          </select>
+          <button onclick="analyzeCategory()" class="btn-primary" id="cat-analyze-btn">分析品类</button>
+        </div>
+      </div>
+      <div id="cat-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div class="card p-4"><div id="chart-price" style="height:320px"></div></div>
+        <div class="card p-4"><div id="chart-rating" style="height:320px"></div></div>
+      </div>
+      <div class="card p-4 mb-6"><div id="chart-scatter" style="height:360px"></div></div>
+      <div id="cat-products"></div>
+    </div>`;
+  // Auto-load categories
+  loadCategories();
+}
+
+async function loadCategories() {
+  const country = document.getElementById('cat-country')?.value || 'US';
+  try {
+    const data = await apiFetch('/categories', { country });
+    const cats = data.data || [];
+    state.categoryList = cats;
+    const sel = document.getElementById('cat-select');
+    sel.innerHTML = '<option value="">选择品类...</option>' + cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function analyzeCategory() {
+  const catId = document.getElementById('cat-select').value;
+  if (!catId) { showToast('请选择一个品类', 'error'); return; }
+  const country = document.getElementById('cat-country').value;
+  const btn = document.getElementById('cat-analyze-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 抓取中...';
+  try {
+    const data = await apiFetch('/best-sellers', { category_id: catId, country });
+    const products = data.data?.best_sellers || [];
+    state.categoryProducts = products;
+    renderCategoryAnalysis(products);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = '分析品类';
+}
+
+function renderCategoryAnalysis(products) {
+  if (!products.length) { showToast('该品类暂无数据（可能被反爬限制）', 'error'); return; }
+  const prices = products.map(p => p.product_price_raw || parsePrice(p.product_price)).filter(v => v > 0);
+  const ratings = products.map(p => parseFloat(p.product_star_rating || 0)).filter(v => v > 0);
+  const reviews = products.map(p => parseInt(p.product_num_ratings || 0));
+  const avgPrice = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
+  const avgRating = ratings.length ? ratings.reduce((a,b)=>a+b,0)/ratings.length : 0;
+  const avgReviews = reviews.length ? reviews.reduce((a,b)=>a+b,0)/reviews.length : 0;
+  const competition = avgReviews > 5000 ? { text:'高竞争', cls:'badge-red' } : avgReviews > 1000 ? { text:'中等竞争', cls:'badge-amber' } : { text:'低竞争', cls:'badge-green' };
+
+  document.getElementById('cat-stats').innerHTML = `
+    <div class="card stat-card p-4"><div class="text-xs text-gray-500 mb-1">平均价格</div><div class="text-2xl font-mono font-700 text-emerald">$${avgPrice.toFixed(2)}</div></div>
+    <div class="card stat-card p-4"><div class="text-xs text-gray-500 mb-1">平均评分</div><div class="text-2xl font-mono font-700 text-amber-400">${avgRating.toFixed(1)} ★</div></div>
+    <div class="card stat-card p-4"><div class="text-xs text-gray-500 mb-1">平均评论数</div><div class="text-2xl font-mono font-700 text-cyan">${Math.round(avgReviews).toLocaleString()}</div></div>
+    <div class="card stat-card p-4"><div class="text-xs text-gray-500 mb-1">竞争度评估</div><div class="text-xl font-600"><span class="badge ${competition.cls} text-sm">${competition.text}</span></div></div>`;
+
+  renderPriceChart(prices);
+  renderRatingChart(ratings);
+  renderScatterChart(products);
+
+  document.getElementById('cat-products').innerHTML = `
+    <div class="card overflow-hidden">
+      <div class="px-4 py-3 border-b border-white/[0.03]"><span class="font-display font-500 text-sm text-white">热销商品 TOP ${products.length}</span></div>
+      <div class="overflow-x-auto" style="max-height:50vh">
+        <table class="data-table w-full"><thead><tr>
+          <th>#</th><th>图片</th><th>商品名称</th><th>价格</th><th>评分</th><th>评论数</th>
+        </tr></thead><tbody>
+          ${products.map((p, i) => `<tr class="fade-in" style="animation-delay:${i*20}ms">
+            <td class="num text-gray-500">${p.rank || i+1}</td>
+            <td><img src="${esc(p.product_photo||'')}" class="w-10 h-10 object-contain rounded bg-white/5" onerror="this.style.display='none'"></td>
+            <td><div class="max-w-sm truncate text-gray-300">${esc(p.product_title||'')}</div></td>
+            <td class="num text-emerald">${esc(p.product_price||'-')}</td>
+            <td class="num">${ratingStars(p.product_star_rating||0)}</td>
+            <td class="num">${fmtNum(p.product_num_ratings)}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>`;
+}
+
+function chartTheme() {
+  return {
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: 'Outfit, Noto Sans SC, sans-serif', color: '#9ca3af' },
+    title: { textStyle: { color: '#e5e7eb', fontSize: 14, fontWeight: 500, fontFamily: 'Outfit' } },
+  };
+}
+
+function renderPriceChart(prices) {
+  const el = document.getElementById('chart-price');
+  if (!el) return;
+  const chart = echarts.init(el);
+  const max = Math.max(...prices);
+  const bins = 10;
+  const step = Math.ceil(max / bins) || 1;
+  const hist = Array(bins).fill(0);
+  prices.forEach(p => { const idx = Math.min(Math.floor(p / step), bins - 1); hist[idx]++; });
+  const labels = hist.map((_, i) => `$${i*step}-${(i+1)*step}`);
+  chart.setOption({
+    ...chartTheme(),
+    title: { text: '价格分布', left: 'center' },
+    tooltip: { trigger: 'axis', backgroundColor: '#12132a', borderColor: 'rgba(99,102,241,0.2)', textStyle: { color: '#e5e7eb' } },
+    xAxis: { type: 'category', data: labels, axisLabel: { rotate: 30, fontSize: 10, color: '#6b7280' }, axisLine: { lineStyle: { color: '#1f2044' } } },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#1f2044' } }, axisLabel: { color: '#6b7280' } },
+    series: [{ type: 'bar', data: hist, itemStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1, [{offset:0,color:'#818cf8'},{offset:1,color:'#4f46e5'}]), borderRadius: [4,4,0,0] }, barMaxWidth: 40 }],
+    grid: { top: 50, bottom: 50, left: 50, right: 20 }
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+
+function renderRatingChart(ratings) {
+  const el = document.getElementById('chart-rating');
+  if (!el) return;
+  const chart = echarts.init(el);
+  const dist = { '5★':0, '4★':0, '3★':0, '2★':0, '1★':0 };
+  ratings.forEach(r => { const k = Math.max(1, Math.min(5, Math.round(r))); dist[k+'★']++; });
+  const data = Object.entries(dist).map(([name, value]) => ({ name, value })).filter(d => d.value > 0);
+  const colors = ['#34d399','#22d3ee','#818cf8','#fbbf24','#fb7185'];
+  chart.setOption({
+    ...chartTheme(),
+    title: { text: '评分分布', left: 'center' },
+    tooltip: { trigger: 'item', backgroundColor: '#12132a', borderColor: 'rgba(99,102,241,0.2)', textStyle: { color: '#e5e7eb' } },
+    series: [{ type: 'pie', radius: ['40%','70%'], center: ['50%','55%'], data, label: { color: '#9ca3af', fontSize: 12 },
+      itemStyle: { color: (p) => colors[p.dataIndex % colors.length], borderColor: '#0b0c1e', borderWidth: 2 },
+      emphasis: { itemStyle: { shadowBlur: 20, shadowColor: 'rgba(99,102,241,0.3)' } } }]
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+
+function renderScatterChart(products) {
+  const el = document.getElementById('chart-scatter');
+  if (!el) return;
+  const chart = echarts.init(el);
+  const data = products.map(p => [
+    parseFloat(p.product_star_rating || 0),
+    parseInt(p.product_num_ratings || 0),
+    p.product_price_raw || parsePrice(p.product_price),
+    (p.product_title || '').substring(0, 30)
+  ]).filter(d => d[0] > 0);
+  chart.setOption({
+    ...chartTheme(),
+    title: { text: '评论数 vs 评分（气泡大小 = 价格）', left: 'center' },
+    tooltip: { trigger: 'item', backgroundColor: '#12132a', borderColor: 'rgba(99,102,241,0.2)', textStyle: { color: '#e5e7eb' },
+      formatter: p => `<b>${p.data[3]}</b><br>评分: ${p.data[0]}<br>评论: ${fmtNum(p.data[1])}<br>价格: $${p.data[2].toFixed(2)}` },
+    xAxis: { name: '评分', nameLocation: 'center', nameGap: 30, min: 1, max: 5, splitLine: { lineStyle: { color: '#1f2044' } }, axisLabel: { color: '#6b7280' }, axisLine: { lineStyle: { color: '#1f2044' } } },
+    yAxis: { name: '评论数', type: 'log', splitLine: { lineStyle: { color: '#1f2044' } }, axisLabel: { color: '#6b7280' }, axisLine: { lineStyle: { color: '#1f2044' } } },
+    series: [{ type: 'scatter', data, symbolSize: d => Math.max(8, Math.min(40, d[2]/3)),
+      itemStyle: { color: new echarts.graphic.RadialGradient(0.5,0.5,0.5, [{offset:0,color:'rgba(34,211,238,0.8)'},{offset:1,color:'rgba(99,102,241,0.3)'}]) } }],
+    grid: { top: 50, bottom: 50, left: 60, right: 30 }
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+
+// ==================== TAB 3: COMPARE ====================
+function renderCompareTab(main) {
+  const tags = state.compareAsins.map((a, i) => `<span class="asin-tag">${esc(a)}<span class="remove" onclick="removeAsin(${i})">&times;</span></span>`).join('');
+  main.innerHTML = `
+    <div class="fade-in mt-6">
+      <div class="card p-5 mb-6">
+        <div class="flex flex-wrap items-center gap-3 mb-3">
+          <input type="text" id="asin-input" class="input-field flex-1 min-w-[200px]" placeholder="输入 ASIN（最多5个）" onkeydown="if(event.key==='Enter')addAsin()">
+          ${countrySelect('cmp-country')}
+          <button onclick="addAsin()" class="btn-ghost">添加</button>
+          <button onclick="doCompare()" class="btn-primary" id="cmp-btn">开始对比</button>
+        </div>
+        <div class="flex flex-wrap gap-2" id="asin-tags">${tags}</div>
+        ${state.compareAsins.length === 0 ? '<p class="text-xs text-gray-500 mt-2">请输入商品的 ASIN 编号（可在亚马逊商品页 URL 中找到，格式如 B0XXXXXXXX）</p>' : ''}
+      </div>
+      <div id="cmp-results"></div>
+      <div class="card p-4 mt-4"><div id="chart-radar" style="height:420px"></div></div>
+    </div>`;
+}
+
+function addAsin() {
+  const inp = document.getElementById('asin-input');
+  const v = inp.value.trim().toUpperCase();
+  if (!v) return;
+  if (state.compareAsins.length >= 5) { showToast('最多添加 5 个 ASIN', 'error'); return; }
+  if (state.compareAsins.includes(v)) { showToast('该 ASIN 已添加', 'error'); return; }
+  state.compareAsins.push(v);
+  inp.value = '';
+  renderCompareTab(document.getElementById('main-content'));
+}
+
+function removeAsin(i) {
+  state.compareAsins.splice(i, 1);
+  renderCompareTab(document.getElementById('main-content'));
+}
+
+async function doCompare() {
+  if (state.compareAsins.length < 2) { showToast('请至少添加 2 个 ASIN', 'error'); return; }
+  const country = document.getElementById('cmp-country').value;
+  const btn = document.getElementById('cmp-btn');
+  const container = document.getElementById('cmp-results');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 抓取中...';
+  container.innerHTML = '<div class="card p-8 text-center"><span class="spinner"></span> <span class="text-gray-400 ml-2">正在抓取商品数据（逐个爬取，请耐心等待）...</span></div>';
+  try {
+    // Fetch sequentially to avoid triggering anti-bot
+    const results = [];
+    for (const asin of state.compareAsins) {
+      const r = await apiFetch('/product-details', { asin, country });
+      results.push(r);
+    }
+    state.compareProducts = results.map(r => r.data || {});
+    renderCompareResults(state.compareProducts);
+  } catch (e) {
+    container.innerHTML = `<div class="card p-8 text-center text-rose">${esc(e.message)}</div>`;
+    showToast(e.message, 'error');
+  }
+  btn.disabled = false; btn.textContent = '开始对比';
+}
+
+function renderCompareResults(products) {
+  const container = document.getElementById('cmp-results');
+  if (!products.length) return;
+
+  const fields = [
+    { key: 'product_title', label: '商品名称', fmt: v => `<div class="max-w-[200px] text-xs leading-snug">${esc((v||'').substring(0,80))}</div>` },
+    { key: 'product_price', label: '价格', fmt: v => `<span class="text-emerald font-mono font-600">${esc(v||'-')}</span>` },
+    { key: 'product_star_rating', label: '评分', fmt: v => ratingStars(v) },
+    { key: 'product_num_ratings', label: '评论数', fmt: v => `<span class="font-mono">${fmtNum(v)}</span>` },
+    { key: 'sales_volume', label: 'BSR排名', fmt: v => `<span class="font-mono">${esc(v||'-')}</span>` },
+    { key: 'product_byline', label: '品牌', fmt: v => esc(v||'-') },
+    { key: 'product_availability', label: '库存状态', fmt: v => esc(v||'-') },
+  ];
+
+  const prices = products.map(p => parsePrice(p.product_price));
+  const ratings = products.map(p => parseFloat(p.product_star_rating||0));
+  const reviews = products.map(p => parseInt(p.product_num_ratings||0));
+  const bestPrice = Math.min(...prices.filter(v=>v>0));
+  const bestRating = Math.max(...ratings);
+  const bestReviews = Math.max(...reviews);
+
+  container.innerHTML = `
+    <div class="card overflow-hidden">
+      <div class="px-4 py-3 border-b border-white/[0.03] flex items-center justify-between">
+        <span class="font-display font-500 text-sm text-white">竞品对比</span>
+        <span class="text-xs text-gray-500">${products.length} 件商品</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="data-table w-full">
+          <thead><tr>
+            <th>指标</th>
+            ${products.map((p,i) => `<th class="text-center">
+              <img src="${esc(p.product_photo||'')}" class="w-16 h-16 object-contain rounded bg-white/5 mx-auto mb-2" onerror="this.style.display='none'">
+              <div class="badge badge-blue">${esc(state.compareAsins[i])}</div>
+            </th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${fields.map(f => `<tr>
+              <td class="font-500 text-gray-400 text-xs uppercase tracking-wider">${f.label}</td>
+              ${products.map((p, i) => {
+                let highlight = '';
+                if (f.key === 'product_price' && parsePrice(p.product_price) === bestPrice && bestPrice > 0) highlight = 'bg-emerald/5 border-l-2 border-emerald';
+                if (f.key === 'product_star_rating' && parseFloat(p.product_star_rating||0) === bestRating && bestRating > 0) highlight = 'bg-amber-400/5 border-l-2 border-amber-400';
+                if (f.key === 'product_num_ratings' && parseInt(p.product_num_ratings||0) === bestReviews && bestReviews > 0) highlight = 'bg-cyan/5 border-l-2 border-cyan';
+                return `<td class="text-center ${highlight}">${f.fmt(p[f.key])}</td>`;
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  renderRadarChart(products);
+}
+
+function renderRadarChart(products) {
+  const el = document.getElementById('chart-radar');
+  if (!el) return;
+  const chart = echarts.init(el);
+  const prices = products.map(p => parsePrice(p.product_price));
+  const ratings = products.map(p => parseFloat(p.product_star_rating||0));
+  const reviews = products.map(p => parseInt(p.product_num_ratings||0));
+  const maxPrice = Math.max(...prices, 1);
+  const maxReviews = Math.max(...reviews, 1);
+  const colors = ['#818cf8','#22d3ee','#34d399','#fbbf24','#fb7185'];
+
+  chart.setOption({
+    ...chartTheme(),
+    title: { text: '多维度雷达对比', left: 'center' },
+    tooltip: { backgroundColor: '#12132a', borderColor: 'rgba(99,102,241,0.2)', textStyle: { color: '#e5e7eb' } },
+    legend: { bottom: 10, textStyle: { color: '#9ca3af' }, data: state.compareAsins },
+    radar: {
+      indicator: [
+        { name: '性价比', max: 100 },
+        { name: '评分', max: 5 },
+        { name: '口碑(评论数)', max: 100 },
+        { name: '品质指数', max: 100 },
+      ],
+      axisName: { color: '#9ca3af' },
+      splitArea: { areaStyle: { color: ['rgba(99,102,241,0.02)','rgba(99,102,241,0.04)'] } },
+      splitLine: { lineStyle: { color: '#1f2044' } },
+      axisLine: { lineStyle: { color: '#1f2044' } },
+    },
+    series: [{
+      type: 'radar',
+      data: products.map((p, i) => ({
+        name: state.compareAsins[i],
+        value: [
+          maxPrice > 0 ? Math.round((1 - prices[i]/maxPrice) * 80 + 20) : 50,
+          ratings[i],
+          maxReviews > 0 ? Math.round(reviews[i]/maxReviews * 100) : 0,
+          Math.round(ratings[i] * 20),
+        ],
+        lineStyle: { color: colors[i], width: 2 },
+        areaStyle: { color: colors[i] + '20' },
+        itemStyle: { color: colors[i] },
+      }))
+    }]
+  });
+  window.addEventListener('resize', () => chart.resize());
+}
+
+// ==================== SKELETON ====================
+function buildSkeletonTable(rows) {
+  let r = '';
+  for (let i = 0; i < rows; i++) {
+    r += `<div class="flex items-center gap-4 p-4 border-b border-white/[0.02]">
+      <div class="skeleton w-12 h-12 shrink-0"></div>
+      <div class="flex-1 space-y-2"><div class="skeleton h-4 w-3/4"></div><div class="skeleton h-3 w-1/2"></div></div>
+      <div class="skeleton h-4 w-16"></div><div class="skeleton h-4 w-12"></div><div class="skeleton h-4 w-16"></div>
+    </div>`;
+  }
+  return `<div class="card overflow-hidden">${r}</div>`;
+}
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', async () => {
+  renderMainContent();
+  // Auto-check backend health
+  const ok = await checkBackendHealth();
+  if (!ok) {
+    // If no backend URL set and health check failed, show setup guide
+    if (!state.backendUrl) {
+      showSetupGuide();
+    } else {
+      showToast('爬虫后端未连接，请检查后端服务是否运行', 'error');
+    }
+  }
+});
+
+function showSetupGuide() {
+  const overlay = document.createElement('div');
+  overlay.id = 'setup-guide-overlay';
+  overlay.className = 'fixed inset-0 z-[250] flex items-center justify-center';
+  overlay.style.background = 'rgba(0,0,0,0.7)';
+  overlay.innerHTML = `
+    <div class="card p-8 max-w-lg w-full mx-4" style="border-color:rgba(99,102,241,0.3)">
+      <h2 class="text-xl font-display font-bold text-white mb-2">配置爬虫后端</h2>
+      <p class="text-gray-400 text-sm mb-6">检测到当前页面没有爬虫服务。你需要先部署后端，然后在下方填入后端地址。</p>
+
+      <div class="mb-4 p-4 rounded-lg" style="background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.15)">
+        <p class="text-accent-light text-sm font-semibold mb-2">部署方式（二选一）</p>
+        <div class="text-sm text-gray-300 space-y-2">
+          <p><span class="text-cyan font-mono">方式1</span> 本地运行：<code class="font-mono text-xs text-accent-light bg-surface-900 px-1.5 py-0.5 rounded">python scraper.py</code>，后端地址填 <code class="font-mono text-xs text-emerald bg-surface-900 px-1.5 py-0.5 rounded">http://localhost:8080</code></p>
+          <p><span class="text-cyan font-mono">方式2</span> 免费云部署：把 backend 文件夹部署到 <a href="https://render.com" target="_blank" class="text-accent-light underline">Render.com</a>，后端地址填 Render 给的域名，如 <code class="font-mono text-xs text-emerald bg-surface-900 px-1.5 py-0.5 rounded">https://xxx.onrender.com</code></p>
+        </div>
+      </div>
+
+      <label class="text-sm text-gray-400 mb-1 block">后端地址</label>
+      <input id="setup-url-input" type="text" class="input-field w-full mb-2" placeholder="例: https://your-app.onrender.com" />
+      <div id="setup-status" class="text-sm mb-4 h-5"></div>
+
+      <div class="flex gap-3">
+        <button onclick="testAndSaveSetup()" class="btn-primary flex-1">测试并保存</button>
+        <button onclick="document.getElementById('setup-guide-overlay').remove()" class="btn-ghost">稍后设置</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+async function testAndSaveSetup() {
+  const input = document.getElementById('setup-url-input');
+  const statusEl = document.getElementById('setup-status');
+  const url = input.value.trim().replace(/\/+$/, '');
+  if (!url) {
+    statusEl.innerHTML = '<span class="text-rose text-sm">请输入后端地址</span>';
+    return;
+  }
+  statusEl.innerHTML = '<span class="spinner" style="width:14px;height:14px"></span> <span class="text-gray-400">正在测试连接...</span>';
+  state.backendUrl = url;
+  localStorage.setItem('scraper_backend_url', url);
+  document.getElementById('backend-url-input').value = url;
+  try {
+    const resp = await fetch(url + '/api/health', { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      state.connected = true;
+      updateApiStatus(true);
+      statusEl.innerHTML = '<span class="text-emerald">连接成功！</span>';
+      showToast('后端连接成功', 'success');
+      setTimeout(() => { document.getElementById('setup-guide-overlay')?.remove(); }, 800);
+      return;
+    }
+  } catch {}
+  state.connected = false;
+  updateApiStatus(false);
+  statusEl.innerHTML = '<span class="text-rose">无法连接，请检查地址是否正确、服务是否已启动</span>';
+}
+</script>
+</body>
+</html>
