@@ -529,7 +529,9 @@ async function showDetail(idx) {
   const rating = p.product_star_rating || '-';
   const reviews = p.product_num_ratings || 0;
   const asin = p.asin || '';
-  const url = p.product_url || '#';
+  const country = document.getElementById('search-country')?.value || document.getElementById('cat-country')?.value || 'US';
+  const domainMap = { US:'www.amazon.com', UK:'www.amazon.co.uk', DE:'www.amazon.de', JP:'www.amazon.co.jp', CA:'www.amazon.ca', FR:'www.amazon.fr', IT:'www.amazon.it', ES:'www.amazon.es' };
+  const url = p.product_url && p.product_url !== '#' ? p.product_url : (asin ? `https://${domainMap[country]||'www.amazon.com'}/dp/${asin}` : '#');
 
   content.innerHTML = `
     <div class="space-y-5 fade-in">
